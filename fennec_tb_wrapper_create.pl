@@ -41,7 +41,9 @@ $opts{w} = (defined $opts{w} )
 die 'Please give an author name via -a' unless defined $opts{a};
 die 'Please give an author email address via -e' unless defined $opts{e};
 
-# build the module
+#---------------------------------------------------------------------------
+#  Module
+#---------------------------------------------------------------------------
 my $module_starter = sprintf q{module-starter --module='%s' --author='%s' --email='%s' -mb},
                              $opts{f}, $opts{a}, $opts{e} ;
 print `$module_starter`;
@@ -54,12 +56,102 @@ chdir $module_dir;
 
 print `fennec_init && fennec_scaffold.pl`;
 
+#---------------------------------------------------------------------------
+#  write lib
+#---------------------------------------------------------------------------
 my $module_package_path = sprintf q{%s.pm}, join '/', 'lib', split /::/, $opts{f};
 #warn $module_package_path;
 #warn `more $module_package_path`;
+
+my $test_head = sprintf q|
+use Fennec::Assert;
+use Fennec::Output::Result;
+require %s;
+|, $opts{t};
+
+my $test_block = sprintf q|
+for my $name ( qw{%s} ) {
+    no strict 'refs';
+    next unless %s->can( $name );
+    tester( $name => tb_wrapper( \&{ '%2$s::' . $name }));
+};
+
+1;                                                                                                                                                                                                                                                                                         
+|,
+   join( ' ', @{$opts{w}} ),
+   $opts{t},
+;
+
+my $wrapped_functions = sprintf q|
+=head1 WRAPPED FUNCTIONS
+
+=over 4
+
+%s
+
+=back
+|, 
+   join( qq{\n\n}, sort map{ sprintf qq{=item $_()} } @{$opts{w}} ),
+;
+
+
+my $lib = read_file( $module_package_path );
+$lib =~ s/The great new .*!/Fennec wrapper for L<$opts{t}>/;
+$lib =~ s/(=head1 NAME)/$test_head\n$1/;
+$lib =~ s/\n\=head1 SYNOPSIS.*}/$test_block\n$wrapped_functions/ms;
+$lib =~ s/1; # End of.*//;
+$lib =~ s/\n\n\n+/\n\n/g;
+
+write_file( $module_package_path, $lib );
+#warn `more $module_package_path`;
+
+
+#---------------------------------------------------------------------------
+#  write test
+#---------------------------------------------------------------------------
 my $module_test_path    = sprintf q{%s.pm}, join '/', 't', split /::/, $opts{f};
 #warn $module_test_path;
 #warn `more $module_test_path`;
+write_file( $module_test_path, sprintf q|package TEST::%s;
+use strict;
+use warnings;
+use Fennec;
+
+require_or_skip %s;
+
+tests load {
+    use_ok( '%1$s' );
+    can_ok( $self, qw{%s
+                     });
+};
+|,
+   $opts{f},
+   $opts{t},
+   join( qq{\n                      }, @{$opts{w}} ),
+);
+#warn `more $module_test_path`;
+
+
+#---------------------------------------------------------------------------
+#  Clean up module_build tests
+#---------------------------------------------------------------------------
+unlink map{ "t/$_"} qw{00-load.t boilerplate.t pod-coverage.t  pod.t};
+write_file( 'MANIFEST',
+            join qq{\n}, 
+             ( grep{! m{t/(00-load|boilerplate|pod-coverage|pod)\.t} } 
+               split /\n/, read_file('MANIFEST')
+             ),
+             q{t/Fennec.t},
+             $module_test_path,
+);
+print read_file('MANIFEST');
+
+#---------------------------------------------------------------------------
+#  run tests
+#---------------------------------------------------------------------------
+$|++;
+#print `perl Build.PL && ./Build && ./Build test`;
+
 
 
 
