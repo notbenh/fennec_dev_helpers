@@ -144,7 +144,7 @@ write_file( 'MANIFEST',
              q{t/Fennec.t},
              $module_test_path,
 );
-print read_file('MANIFEST');
+#print read_file('MANIFEST');
 
 #---------------------------------------------------------------------------
 #  run tests
